@@ -39,6 +39,15 @@
 
 (defn innovation [ρ² l Δ] (mmul ρ² (Q l Δ)))
 
+(defn approx-Qnvi
+ "Returns unscaled Covariance matrix for length scale ls and delay d"
+  [innovation ls d]
+  (let [l (/ (sqrt 5) ls)
+        q (/ (* 16 (pow l 5)) 3)]
+    (if (< (* d l) 0.01 )
+      (matrix [ [0 0 0] [0 0 0] [0 0 (/ 1 (* q d))]])
+      (inverse (innovation d)))))
+
 (defn reverse-innovation [ρ² l Δ] (mmul ρ² (reverse-Q l Δ)))
 
 (defn regression
@@ -101,14 +110,13 @@
 
 (defn sample-sandwich
  "Sample F[i] | F[i-1],F[i+1] where F[j] is F(t(j))"
- [Fv delay-v Fn delay-n regression innovation]
+ [Fv delay-v Fn delay-n regression innovation approx-Qnvi]
  (let [Xv (regression delay-v)
        Qv (innovation delay-v)
        Xn (regression delay-n)
        delay-nv (+ delay-n delay-v)
        Xnv (regression delay-nv)
-       Qnv (innovation delay-nv)
-       Qnvi (inverse Qnv)
+       Qnvi (approx-Qnvi delay-nv)
        XvFv (mmul Xv Fv)
        XnvFv (mmul Xnv Fv)
        QvXn' (mmul Qv (transpose Xn))
@@ -123,7 +131,8 @@
        reg (partial regression gp-time-scale)
        inn (partial innovation gp-var gp-time-scale)
        rev-reg (partial reverse-regression gp-time-scale)
-       rev-inn (partial reverse-innovation gp-var gp-time-scale)]
+       rev-inn (partial reverse-innovation gp-var gp-time-scale)
+       app-Qnvi (partial approx-Qnvi inn gp-time-scale)]
    (fn [t]
      (if (contains? @cond-set t) (@cond-set t)
        (let [vor (avl/nearest @cond-set < t)
@@ -136,7 +145,7 @@
                           [tn Fn] nach
                           delay-v (- t tv)
                           delay-n (- tn t)
-                          Ft (sample-sandwich Fv delay-v Fn delay-n reg inn)]
+                          Ft (sample-sandwich Fv delay-v Fn delay-n reg inn app-Qnvi)]
                       (do (swap! cond-set assoc t Ft) Ft))
            has-vor (let [[tv Fv] vor
                          delay (- t tv)

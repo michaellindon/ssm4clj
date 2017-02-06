@@ -7,5 +7,4 @@
 		 [net.mikera/core.matrix "0.57.0"]
                  [net.mikera/vectorz-clj "0.45.0"]
 		 [org.clojure/data.avl "0.0.17"]
-                 [incanter "1.5.7"]
 		 [org.clojure/math.combinatorics "0.1.3"]])
