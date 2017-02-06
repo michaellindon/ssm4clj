@@ -11,6 +11,7 @@
 State Space Construction of Matern Gaussian Process
 
 [![Build Status](https://travis-ci.org/michaellindon/ssm4clj.svg?branch=master)](https://travis-ci.org/michaellindon/ssm4clj)
+[![Dependency Status](https://www.versioneye.com/user/projects/589900aa1e07ae0040a4f1d3/badge.svg?style=flat-square)](https://www.versioneye.com/user/projects/589900aa1e07ae0040a4f1d3)
 
 ##Installation
 
