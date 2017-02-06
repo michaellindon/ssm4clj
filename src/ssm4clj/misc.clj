@@ -1,6 +1,7 @@
 (ns ssm4clj.misc
   (:require [clojure.core.matrix :refer :all]
-            [clojure.core.matrix.linear :as la]))
+            [clojure.core.matrix.linear :as la]
+            [clojure.core.matrix.random :refer :all]))
 
 (defn logpdf-mvnormal
  [observations mean-vector cov-matrix]
