@@ -1,6 +1,5 @@
 (ns ssm4clj.misc
-  (:require [incanter.stats :refer :all]
-            [clojure.core.matrix :refer :all]
+  (:require [clojure.core.matrix :refer :all]
             [clojure.core.matrix.linear :as la]))
 
 (defn logpdf-mvnormal
