@@ -3,8 +3,8 @@
             [clojure.core.matrix :refer :all]
             [clojure.data.avl :as avl]))
 
-(defn Q
- "Returns unscaled Covariance matrix for length scale ls and delay d"
+(defn corr
+ "Computes correlation matrix for length scale ls and delay d"
   [ls d]
   (let [l (/ (sqrt 5) ls)
         q (/ (* 16 (pow l 5)) 3)
@@ -20,8 +20,8 @@
               (* 0.125 em2dl q (pow d 2) (pow (+ -2 (* d l)) 2))
               (/ (* q (+ 3 (* em2dl (+ -3 (* -2 d l (+ -5 (* d l (+ 11 (* d l (+ -6 (* d l))))))))))) (* 16 l))]])))
 
-(defn reverse-Q
- "Returns unscaled Covariance matrix for length scale ls and delay d"
+(defn reverse-corr
+ "Computes reverse-correlation matrix for length scale ls and delay d"
   [ls d]
   (let [l (/ (sqrt 5) ls)
         q (/ (* 16 (pow l 5)) 3)
@@ -37,18 +37,23 @@
               (* -1 0.125 em2dl q (pow d 2) (pow (+ -2 (* d l)) 2))
               (/ (* q (+ 3 (* em2dl (+ -3 (* -2 d l (+ -5 (* d l (+ 11 (* d l (+ -6 (* d l))))))))))) (* 16 l))]])))
 
-(defn innovation [ρ² l Δ] (mmul ρ² (Q l Δ)))
+(defn innovation
+  "Computes covariance matrix for variance ρ² length-scale l and delay Δ"
+  [ρ² l Δ] (mmul ρ² (corr l Δ)))
 
+;;TODO Check this agrees in the limit
 (defn approx-Qnvi
  "Returns unscaled Covariance matrix for length scale ls and delay d"
-  [innovation ls d]
+  [innovation ρ² ls d]
   (let [l (/ (sqrt 5) ls)
         q (/ (* 16 (pow l 5)) 3)]
     (if (< (* d l) 0.01 )
-      (matrix [ [0 0 0] [0 0 0] [0 0 (/ 1 (* q d))]])
+      (matrix [ [0 0 0] [0 0 0] [0 0 (/ 1 (* ρ² q d))]])
       (inverse (innovation d)))))
 
-(defn reverse-innovation [ρ² l Δ] (mmul ρ² (reverse-Q l Δ)))
+(defn reverse-innovation
+  "Scales the reverse covariance matrix by variance parameter ρ²"
+  [ρ² l Δ] (mmul ρ² (reverse-corr l Δ)))
 
 (defn regression
   "Returns a regression matrix for length scale ls and delay d"
@@ -98,10 +103,13 @@
                 0
                 (/ (* 3 q) (* 16 l))]])))
 
-(defn statcov [ρ² l] (mmul ρ² (statcorr l)))
+(defn statcov
+  "Computes the stationary covariance matrix for variance ρ²
+  and length scale l"
+  [ρ² l] (mmul ρ² (statcorr l)))
 
 (defn sample-neighbour
- "Sample F[i+1] | F[i] or F[i-1] | F[i] depending on context]"
+ "Sample F[i+1] | F[i] or F[i-1] | F[i] depending on context"
  [F regression innovation delay]
  (let [X (regression delay)
        q (sample-safe-mvn (innovation delay))]
@@ -124,6 +132,10 @@
    (add mean-vector (sample-safe-mvn cov-matrix))))
 
 (defn sample-gp
+  "Sample a gaussian process function with specified variance
+   and time-scale. Optionally provide known function values at
+   a collection of times so that drawn function passes through
+   these points."
   ([gp-var gp-time-scale]
    (sample-gp [] gp-var gp-time-scale))
   ([known-values gp-var gp-time-scale]
@@ -132,7 +144,7 @@
          inn (partial innovation gp-var gp-time-scale)
          rev-reg (partial reverse-regression gp-time-scale)
          rev-inn (partial reverse-innovation gp-var gp-time-scale)
-         app-Qnvi (partial approx-Qnvi inn gp-time-scale)]
+         app-Qnvi (partial approx-Qnvi inn gp-var gp-time-scale)]
      (with-meta
        (fn [t]
          (if (contains? @cond-set t) (@cond-set t)
@@ -290,7 +302,8 @@
    (+ logdensity-y logdensity-f)))
 
 (defn log-likelihood
- "Evaluates the log likelihood"
+ "Evaluates the log likelihood having marginalized out the Gaussian Process
+  with respect to its prior."
  [times obs obs-var gp-var gp-time-scale]
  (if (or (neg? gp-var) (neg? gp-time-scale) (neg? obs-var))
    (Double/NEGATIVE_INFINITY)
@@ -305,6 +318,9 @@
                       (map vector obs mar-means mar-vars))))))
 
 (defn mean-conditional
+  "Computes the full condtional of the mean parameter with respect
+  to a uniform prior having marginalized out the gaussian process
+  function f with respect to its prior."
  [times obs obs-var gp-var gp-time-scale]
  (let
   [[delays Qs Xs P HP mar-obs-var-1 minit Minit]

@@ -4,6 +4,7 @@
             [incanter.stats :refer :all]))
 
 (defn logpdf-mvnormal
+  "log density of multivariate normal"
   ([observations cov-matrix]
    (let [n (ecount observations)]
      (logpdf-mvnormal (zero-array [n]) cov-matrix)))
@@ -16,13 +17,14 @@
      (negate (+ normalizer exponent)))))
 
 (defn logpdf-normal
+  "log density of univariate normal"
  [y mu s2]
  (let [exponent (* 0.5 (/ (square (- y mu)) s2))
        normalizer (* 0.5 (log (* 2 Math/PI s2)))]
    (negate (+ exponent normalizer))))
 
 (defn sample-safe-mvn
- "Numerically stable version of sample-mvn"
+ "Numerically stable function to sample a multivariate normal"
   ([cov-matrix]
    (let [ncols (column-count cov-matrix)
          z (sample-normal ncols)
@@ -34,6 +36,7 @@
    (add mean-vector (sample-safe-mvn cov-matrix))))
 
 (defn sample-truncated-normal [mu s2 a b]
+  "Generate a univariate random normal truncated to interval [a,b]"
  (let [sd (sqrt s2)
        normalizer (- (cdf-normal b :mean mu :sd sd) (cdf-normal a :mean mu :sd sd))
        uniform (sample-beta 1)]
@@ -41,6 +44,7 @@
                    :mean mu :sd sd)))
 
 (defn sample-left-normal [mu s2]
+  "Generate a univariate random normal truncated to (-inf,0)"
  (let [sd (sqrt s2)
        normalizer (cdf-normal 0 :mean mu :sd sd)
        uniform (sample-beta 1)]
@@ -48,6 +52,7 @@
                    :mean mu :sd sd)))
 
 (defn sample-right-normal [mu s2]
+  "Generate a univariate random normal truncated to (0,Inf)"
  (let [sd (sqrt s2)
        normalizer (- 1 (cdf-normal 0 :mean mu :sd sd))
        uniform (sample-beta 1)]

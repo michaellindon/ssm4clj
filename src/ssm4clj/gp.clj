@@ -3,6 +3,8 @@
             [clojure.math.combinatorics :as combo]))
 
 (defn matern-cov-matrix
+  "Constructs the covariance matrix for a Matern Gaussian
+  Process."
   [times gp-variance gp-length-scale]
   (let [p (count times)
         time-pairs (combo/cartesian-product times times)
@@ -15,7 +17,10 @@
     (reshape covs [p p])))
 
 (defn trusted-log-likelihood
- "Slow O(n^3) implementation"
+  "Evaluates the marginal log-likelihood using the O(n^3) brute force
+  implementation for Gaussian processes. Marginal in the sense that
+  the Gaussian process f has been integrated out of the likelihood
+  with respect to its prior."
  [times observations observation-variance gp-variance gp-length-scale]
  (let [p (count times)
        I (identity-matrix p)
@@ -27,6 +32,8 @@
    (negate (+ normalizer exponent))))
 
 (defn trusted-mean-conditional
+  "Returns parameters defining the full conditional for the mean with
+  respect to a uniform prior, having already integrated out the GP f"
  [times observations observation-variance gp-variance gp-length-scale]
  (let [p (count times)
        I (identity-matrix p)
