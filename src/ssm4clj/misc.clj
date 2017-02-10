@@ -4,13 +4,16 @@
             [incanter.stats :refer :all]))
 
 (defn logpdf-mvnormal
- [observations mean-vector cov-matrix]
- (let [n (count observations)
-       residual (sub observations mean-vector)
-       exponent (* 0.5 (dot residual (mmul (inverse cov-matrix) residual)))
-       normalizer (+ (* 0.5 (log (det cov-matrix)))
-                     (* n 0.5 (log (* 2 Math/PI))))]
-   (negate (+ normalizer exponent))))
+  ([observations cov-matrix]
+   (let [n (ecount observations)]
+     (logpdf-mvnormal (zero-array [n]) cov-matrix)))
+  ([observations mean-vector cov-matrix]
+   (let [n (ecount observations)
+         residual (sub observations mean-vector)
+         exponent (* 0.5 (dot residual (mmul (inverse cov-matrix) residual)))
+         normalizer (+ (* 0.5 (log (det cov-matrix)))
+                       (* n 0.5 (log (* 2 Math/PI))))]
+     (negate (+ normalizer exponent)))))
 
 (defn logpdf-normal
  [y mu s2]
@@ -19,14 +22,16 @@
    (negate (+ exponent normalizer))))
 
 (defn sample-safe-mvn
- "Safe version of sample-mvn"
- [sigma]
- (let [ncols (column-count sigma)
-       z (sample-normal ncols)
-       d (la/svd sigma)
-       {U :U S :S V* :V*} (la/svd sigma)
-       D (diagonal-matrix (map (fn [x] (sqrt (max x 0))) S))]
-   (mmul U D z)))
+ "Numerically stable version of sample-mvn"
+  ([cov-matrix]
+   (let [ncols (column-count cov-matrix)
+         z (sample-normal ncols)
+         d (la/svd cov-matrix)
+         {U :U S :S V* :V*} (la/svd cov-matrix)
+         D (diagonal-matrix (map (fn [x] (sqrt (max x 0))) S))]
+     (mmul U D z)))
+  ([mean-vector cov-matrix]
+   (add mean-vector (sample-safe-mvn cov-matrix))))
 
 (defn sample-truncated-normal [mu s2 a b]
  (let [sd (sqrt s2)

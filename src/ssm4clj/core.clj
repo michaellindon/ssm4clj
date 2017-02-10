@@ -101,15 +101,14 @@
 (defn statcov [ρ² l] (mmul ρ² (statcorr l)))
 
 (defn sample-neighbour
- "Sample F[i+1] | F[i] where F[j] is F(t(j)) OR
- Sample F[i-1 | F[i] depending on context]"
+ "Sample F[i+1] | F[i] or F[i-1] | F[i] depending on context]"
  [F regression innovation delay]
  (let [X (regression delay)
        q (sample-safe-mvn (innovation delay))]
   (add (mmul X F) q)))
 
 (defn sample-sandwich
- "Sample F[i] | F[i-1],F[i+1] where F[j] is F(t(j))"
+ "Sample F[i] | F[i-1], F[i+1]"
  [Fv delay-v Fn delay-n regression innovation approx-Qnvi]
  (let [Xv (regression delay-v)
        Qv (innovation delay-v)
@@ -125,45 +124,57 @@
    (add mean-vector (sample-safe-mvn cov-matrix))))
 
 (defn sample-gp
- "Gaussian Process Function"
- [known-values gp-var gp-time-scale]
- (let [cond-set (atom (into (avl/sorted-map) known-values))
-       reg (partial regression gp-time-scale)
-       inn (partial innovation gp-var gp-time-scale)
-       rev-reg (partial reverse-regression gp-time-scale)
-       rev-inn (partial reverse-innovation gp-var gp-time-scale)
-       app-Qnvi (partial approx-Qnvi inn gp-time-scale)]
-   (fn [t]
-     (if (contains? @cond-set t) (@cond-set t)
-       (let [vor (avl/nearest @cond-set < t)
-             nach  (avl/nearest @cond-set > t)
-             has-vor (not (nil? vor))
-             has-nach  (not (nil? nach))
-             has-both  (and has-vor has-nach)]
-         (cond
-           has-both (let [[tv Fv] vor
-                          [tn Fn] nach
-                          delay-v (- t tv)
-                          delay-n (- tn t)
-                          Ft (sample-sandwich Fv delay-v Fn delay-n reg inn app-Qnvi)]
-                      (do (swap! cond-set assoc t Ft) Ft))
-           has-vor (let [[tv Fv] vor
-                         delay (- t tv)
-                         Ft (sample-neighbour Fv reg inn delay)]
-                     (do (swap! cond-set assoc t Ft) Ft))
-           has-nach (let [[tn Fn] nach
-                          delay (- tn t)
-                          Ft (sample-neighbour Fn rev-reg rev-inn delay)]
-                      (do (swap! cond-set assoc t Ft) Ft))
-          :else (let [Ft (sample-safe-mvn (statcov gp-var gp-time-scale))]
-                  (do (swap! cond-set assoc t Ft) Ft))))))))
+  ([gp-var gp-time-scale]
+   (sample-gp [] gp-var gp-time-scale))
+  ([known-values gp-var gp-time-scale]
+   (let [cond-set (atom (into (avl/sorted-map) known-values))
+         reg (partial regression gp-time-scale)
+         inn (partial innovation gp-var gp-time-scale)
+         rev-reg (partial reverse-regression gp-time-scale)
+         rev-inn (partial reverse-innovation gp-var gp-time-scale)
+         app-Qnvi (partial approx-Qnvi inn gp-time-scale)]
+     (with-meta
+       (fn [t]
+         (if (contains? @cond-set t) (@cond-set t)
+             (let [vor (avl/nearest @cond-set < t)
+                   nach  (avl/nearest @cond-set > t)
+                   has-vor (not (nil? vor))
+                   has-nach  (not (nil? nach))
+                   has-both  (and has-vor has-nach)]
+               (cond
+                 has-both (let [[tv Fv] vor
+                                [tn Fn] nach
+                                delay-v (- t tv)
+                                delay-n (- tn t)
+                                Ft (sample-sandwich Fv delay-v Fn delay-n reg inn app-Qnvi)]
+                            (do (swap! cond-set assoc t Ft) Ft))
+                 has-vor (let [[tv Fv] vor
+                               delay (- t tv)
+                               Ft (sample-neighbour Fv reg inn delay)]
+                           (do (swap! cond-set assoc t Ft) Ft))
+                 has-nach (let [[tn Fn] nach
+                                delay (- tn t)
+                                Ft (sample-neighbour Fn rev-reg rev-inn delay)]
+                            (do (swap! cond-set assoc t Ft) Ft))
+                 :else (let [Ft (sample-safe-mvn (statcov gp-var gp-time-scale))]
+                         (do (swap! cond-set assoc t Ft) Ft))))))
+       {:var gp-var :time-scale gp-time-scale :data cond-set}))))
 
 (defn AR-params
-  [times obs obs-var gp-var gp-time-scale]
+  "Yields time differences, covariance matrices, regression matrices
+   and stationary covariance matricex determining the autoregressive
+   structure on F"
+  [times gp-var gp-time-scale]
   (let [delays (map - (rest times) times)
         Qs (map (partial innovation gp-var gp-time-scale) delays)
         Xs (map (partial regression gp-time-scale) delays)
-        P (statcov gp-var gp-time-scale)
+        P (statcov gp-var gp-time-scale) ]
+    [delays Qs Xs P]))
+
+(defn filter-params
+  "Augments the AR-paremeters with additional useful quantities"
+  [times obs obs-var gp-var gp-time-scale]
+  (let [[delays Qs Xs P] (AR-params times gp-var gp-time-scale)
         mar-obs-var-1 (+ obs-var (mget P 0 0))
         minit (div (mul (slice P 1 0) (first obs)) mar-obs-var-1)
         HP (slice P 0 0)
@@ -171,6 +182,8 @@
     [delays Qs Xs P HP mar-obs-var-1 minit Minit]))
 
 (defn forward-filter
+  "Returns new mean and covariance matrix along with other
+   useful quantities"
  [inputs params]
  (let [[m M _ _ _] inputs
        [y obs-var X Q] params
@@ -186,6 +199,8 @@
    [m-out M-out mar-obs-mean mar-obs-var XMXQH]))
 
 (defn backward-compose
+  "Returns the mean and covariance matrix defining the distribution
+  of F_i conditional on F_i+1 and Y_1:i. Mean is a function of F_i+1."
  [m M X Q]
  (let [XMXQ (add Q (mmul X M (transpose X)))
        XMXQi (inverse XMXQ)
@@ -196,16 +211,23 @@
        cov-matrix (sub M (mmul MX' XMXQi XM))]
    [mean-function cov-matrix]))
 
+(defn backward-smooth
+  "Returns the mode of F[i] | F[i+1] , Y[1], ...,Y[i]"
+  [F distribution]
+  (let [[mean-function cov-matrix] distribution]
+    (mean-function F)))
+
 (defn backward-sample
+  "Samples a draw from F[i] | F[i+1], Y[1], ..., Y[i]"
  [F distribution]
  (let [[mean-function cov-matrix] distribution]
-   (add (mean-function F) (sample-safe-mvn cov-matrix))))
+   (sample-safe-mvn (mean-function F) cov-matrix)))
 
 (defn FFBC
  "Forward Filtering Backward Compose Algorithm"
  [times obs obs-var gp-var gp-time-scale]
  (let [[delays Qs Xs P HP mar-obs-var-1 minit Minit]
-       (AR-params times obs obs-var gp-var gp-time-scale)
+       (filter-params times obs obs-var gp-var gp-time-scale)
        FF (reductions forward-filter
                       [minit Minit 0 mar-obs-var-1 HP]
                       (map vector (rest obs) (repeat obs-var) Xs Qs))
@@ -214,12 +236,36 @@
    [BC BCn]))
 
 (defn FFBS
- "Forward Filtering Backward Compose Algorithm"
+ "Forward Filtering Backward Sampling Algorithm"
  [times obs obs-var gp-var gp-time-scale]
  (let [[BC BCn] (FFBC times obs obs-var gp-var gp-time-scale)
-       Fn (add (first BCn) (sample-safe-mvn (second BCn)))
+       Fn (sample-safe-mvn (first BCn) (second BCn))
        Fs (reverse (reductions backward-sample Fn (reverse BC)))]
    (zipmap times Fs)))
+
+(defn FFBM
+  "Forward Filtering Backward Smoothing Algorithm"
+  [times obs obs-var gp-var gp-time-scale]
+  (let [[BC BCn] (FFBC times obs obs-var gp-var gp-time-scale)
+        Fn (first BCn)
+        Fs (reverse (reductions backward-smooth Fn (reverse BC)))]
+    (zipmap times Fs)))
+
+(defn logpdf-prior-gp
+  "Evaluates the prior of the gp at F"
+  ([F]
+   (let [{gp-var :var
+          gp-time-scale :time-scale} (meta F)]
+     (logpdf-prior-gp F gp-var gp-time-scale)))
+  ([F gp-var gp-time-scale]
+   (let [data (deref (:data (meta F)))
+         times (keys data)
+         Fs (vals data)
+         [delays Qs Xs P] (AR-params times gp-var gp-time-scale)
+         logpdf-AR (fn [Fn Fv X Q] (logpdf-mvnormal Fn (mmul X Fv) Q))]
+     (reduce +
+             (logpdf-mvnormal (first Fs) (matrix [0 0 0]) P)
+             (map logpdf-AR (rest Fs) Fs Xs Qs)))))
 
 (defn logpdf-gen-F
  [F times obs obs-var gp-var gp-time-scale]
@@ -235,7 +281,7 @@
 (defn logpdf-fc-F
  [F times obs obs-var gp-var gp-time-scale]
  (let [[delays Qs Xs P HP mar-obs-var-1 minit Minit]
-       (AR-params times obs obs-var gp-var gp-time-scale)
+       (filter-params times obs obs-var gp-var gp-time-scale)
        Fs (map F times)
        means (cons [0 0 0] (map (fn [X F] (mmul X F)) Xs (drop-last Fs)))
        covars (cons P Qs)
@@ -247,9 +293,9 @@
  "Evaluates the log likelihood"
  [times obs obs-var gp-var gp-time-scale]
  (if (or (neg? gp-var) (neg? gp-time-scale) (neg? obs-var))
-     (Double/NEGATIVE_INFINITY)
+   (Double/NEGATIVE_INFINITY)
      (let [[delays Qs Xs P HP mar-obs-var-1 minit Minit]
-           (AR-params times obs obs-var gp-var gp-time-scale)
+           (filter-params times obs obs-var gp-var gp-time-scale)
            FF (reductions forward-filter
                           [minit Minit 0 mar-obs-var-1 HP]
                           (map vector (rest obs) (repeat obs-var) Xs Qs))
@@ -262,7 +308,7 @@
  [times obs obs-var gp-var gp-time-scale]
  (let
   [[delays Qs Xs P HP mar-obs-var-1 minit Minit]
-   (AR-params times obs obs-var gp-var gp-time-scale)
+   (filter-params times obs obs-var gp-var gp-time-scale)
    Cinit (mul (slice P 1 0) (/ (first obs) mar-obs-var-1))
    Dinit (negate (div (slice P 1 0) mar-obs-var-1))
    forward-filter
