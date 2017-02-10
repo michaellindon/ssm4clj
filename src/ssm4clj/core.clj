@@ -41,7 +41,6 @@
   "Computes covariance matrix for variance ρ² length-scale l and delay Δ"
   [ρ² l Δ] (mmul ρ² (corr l Δ)))
 
-;;TODO Check this agrees in the limit
 (defn approx-Qnvi
  "Returns unscaled Covariance matrix for length scale ls and delay d"
   [innovation ρ² ls d]
