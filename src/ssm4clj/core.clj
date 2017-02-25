@@ -303,11 +303,10 @@
 (defn log-likelihood
   "Evaluates the log likelihood having marginalized out the Gaussian Process
   with respect to its prior."
-  [times obs-unc obs-var gp-mean gp-var gp-time-scale]
+  [times obs obs-var gp-mean gp-var gp-time-scale]
   (if (or (neg? gp-var) (neg? gp-time-scale) (neg? obs-var))
     (Double/NEGATIVE_INFINITY)
-    (let [obs (map (fn [x] (- x gp-mean)) obs-unc)
-          [delays Qs Xs P HP mar-obs-var-1 minit Minit]
+    (let [[delays Qs Xs P HP mar-obs-var-1 minit Minit]
           (filter-params times obs obs-var gp-var gp-time-scale)
           FF (reductions forward-filter
                          [minit Minit 0 mar-obs-var-1 HP]
