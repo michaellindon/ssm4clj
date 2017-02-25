@@ -301,20 +301,21 @@
    (+ logdensity-y logdensity-f)))
 
 (defn log-likelihood
- "Evaluates the log likelihood having marginalized out the Gaussian Process
+  "Evaluates the log likelihood having marginalized out the Gaussian Process
   with respect to its prior."
- [times obs obs-var gp-var gp-time-scale]
- (if (or (neg? gp-var) (neg? gp-time-scale) (neg? obs-var))
-   (Double/NEGATIVE_INFINITY)
-     (let [[delays Qs Xs P HP mar-obs-var-1 minit Minit]
-           (filter-params times obs obs-var gp-var gp-time-scale)
-           FF (reductions forward-filter
-                          [minit Minit 0 mar-obs-var-1 HP]
-                          (map vector (rest obs) (repeat obs-var) Xs Qs))
-           mar-means (map (fn [x] (nth x 2)) FF)
-           mar-vars (map (fn [x] (nth x 3)) FF)]
-       (reduce + (map (fn [x] (let [[y mu s2] x] (logpdf-normal y mu s2)))
-                      (map vector obs mar-means mar-vars))))))
+  [times obs-unc obs-var gp-mean gp-var gp-time-scale]
+  (if (or (neg? gp-var) (neg? gp-time-scale) (neg? obs-var))
+    (Double/NEGATIVE_INFINITY)
+    (let [obs (map (fn [x] (- x gp-mean)) obs-unc)
+          [delays Qs Xs P HP mar-obs-var-1 minit Minit]
+          (filter-params times obs obs-var gp-var gp-time-scale)
+          FF (reductions forward-filter
+                         [minit Minit 0 mar-obs-var-1 HP]
+                         (map vector (rest obs) (repeat obs-var) Xs Qs))
+          mar-means (map (fn [x] (nth x 2)) FF)
+          mar-vars (map (fn [x] (nth x 3)) FF)]
+      (reduce + (map (fn [x] (let [[y mu s2] x] (logpdf-normal y mu s2)))
+                     (map vector obs mar-means mar-vars))))))
 
 (defn mean-conditional
   "Computes the full condtional of the mean parameter with respect
