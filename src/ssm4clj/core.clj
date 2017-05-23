@@ -4,7 +4,7 @@
             [clojure.data.avl :as avl]))
 
 (defn corr
- "Computes correlation matrix for length scale ls and delay d"
+  "Computes correlation matrix for length scale ls and delay d"
   [ls d]
   (let [l (/ (sqrt 5) ls)
         q (/ (* 16 (pow l 5)) 3)
@@ -21,7 +21,7 @@
               (/ (* q (+ 3 (* em2dl (+ -3 (* -2 d l (+ -5 (* d l (+ 11 (* d l (+ -6 (* d l))))))))))) (* 16 l))]])))
 
 (defn reverse-corr
- "Computes reverse-correlation matrix for length scale ls and delay d"
+  "Computes reverse-correlation matrix for length scale ls and delay d"
   [ls d]
   (let [l (/ (sqrt 5) ls)
         q (/ (* 16 (pow l 5)) 3)
@@ -42,7 +42,7 @@
   [ρ² l Δ] (mmul ρ² (corr l Δ)))
 
 (defn approx-Qnvi
- "Returns unscaled Covariance matrix for length scale ls and delay d"
+  "Returns unscaled Covariance matrix for length scale ls and delay d"
   [innovation ρ² ls d]
   (let [l (/ (sqrt 5) ls)
         q (/ (* 16 (pow l 5)) 3)]
@@ -91,16 +91,16 @@
   [ls]
   (let [l (/ (sqrt 5) ls)
         q (/ (* 16 (pow l 5)) 3)]
-      (matrix [
-               [(/ (* 3 q) (* 16 (pow l 5)))
-                0
-                (* -1 (/ q (* 16 l l l)))]
-               [0
-                (/ q (* 16 l l l))
-                0]
-               [(* -1 (/ q (* 16 l l l)))
-                0
-                (/ (* 3 q) (* 16 l))]])))
+    (matrix [
+             [(/ (* 3 q) (* 16 (pow l 5)))
+              0
+              (* -1 (/ q (* 16 l l l)))]
+             [0
+              (/ q (* 16 l l l))
+              0]
+             [(* -1 (/ q (* 16 l l l)))
+              0
+              (/ (* 3 q) (* 16 l))]])))
 
 (defn statcov
   "Computes the stationary covariance matrix for variance ρ²
@@ -108,27 +108,27 @@
   [ρ² l] (mmul ρ² (statcorr l)))
 
 (defn sample-neighbour
- "Sample F[i+1] | F[i] or F[i-1] | F[i] depending on context"
- [F regression innovation delay]
- (let [X (regression delay)
-       q (sample-safe-mvn (innovation delay))]
-  (add (mmul X F) q)))
+  "Sample F[i+1] | F[i] or F[i-1] | F[i] depending on context"
+  [F regression innovation delay]
+  (let [X (regression delay)
+        q (sample-safe-mvn (innovation delay))]
+    (add (mmul X F) q)))
 
 (defn sample-sandwich
- "Sample F[i] | F[i-1], F[i+1]"
- [Fv delay-v Fn delay-n regression innovation approx-Qnvi]
- (let [Xv (regression delay-v)
-       Qv (innovation delay-v)
-       Xn (regression delay-n)
-       delay-nv (+ delay-n delay-v)
-       Xnv (regression delay-nv)
-       Qnvi (approx-Qnvi delay-nv)
-       XvFv (mmul Xv Fv)
-       XnvFv (mmul Xnv Fv)
-       QvXn' (mmul Qv (transpose Xn))
-       mean-vector (add XvFv (mmul QvXn' Qnvi (sub Fn XnvFv)))
-       cov-matrix (sub Qv (mmul QvXn' Qnvi (transpose QvXn')))]
-   (add mean-vector (sample-safe-mvn cov-matrix))))
+  "Sample F[i] | F[i-1], F[i+1]"
+  [Fv delay-v Fn delay-n regression innovation approx-Qnvi]
+  (let [Xv (regression delay-v)
+        Qv (innovation delay-v)
+        Xn (regression delay-n)
+        delay-nv (+ delay-n delay-v)
+        Xnv (regression delay-nv)
+        Qnvi (approx-Qnvi delay-nv)
+        XvFv (mmul Xv Fv)
+        XnvFv (mmul Xnv Fv)
+        QvXn' (mmul Qv (transpose Xn))
+        mean-vector (add XvFv (mmul QvXn' Qnvi (sub Fn XnvFv)))
+        cov-matrix (sub Qv (mmul QvXn' Qnvi (transpose QvXn')))]
+    (add mean-vector (sample-safe-mvn cov-matrix))))
 
 (defn sample-gp
   "Sample a gaussian process function with specified variance
@@ -186,7 +186,7 @@
   "Augments the AR-paremeters with additional useful quantities"
   [times obs obs-var gp-var gp-time-scale]
   (let [[delays Qs Xs P] (AR-params times gp-var gp-time-scale)
-        mar-obs-var-1 (+ obs-var (mget P 0 0))
+        mar-obs-var-1 (+ (first obs-var) (mget P 0 0))
         minit (div (mul (slice P 1 0) (first obs)) mar-obs-var-1)
         HP (slice P 0 0)
         Minit (sub P (div (outer-product HP HP) mar-obs-var-1))]
@@ -241,7 +241,7 @@
        (filter-params times obs obs-var gp-var gp-time-scale)
        FF (reductions forward-filter
                       [minit Minit 0 mar-obs-var-1 HP]
-                      (map vector (rest obs) (repeat obs-var) Xs Qs))
+                      (map vector (rest obs) (rest obs-var) Xs Qs))
        BCn [(first (last FF)) (second (last FF))]
        BC (map backward-compose (map first FF) (map second FF) Xs Qs)]
    [BC BCn]))
@@ -304,13 +304,13 @@
   "Evaluates the log likelihood having marginalized out the Gaussian Process
   with respect to its prior."
   [times obs obs-var gp-var gp-time-scale]
-  (if (or (neg? gp-var) (neg? gp-time-scale) (neg? obs-var))
+  (if (or (neg? gp-var) (neg? gp-time-scale))
     (Double/NEGATIVE_INFINITY)
     (let [[delays Qs Xs P HP mar-obs-var-1 minit Minit]
           (filter-params times obs obs-var gp-var gp-time-scale)
           FF (reductions forward-filter
                          [minit Minit 0 mar-obs-var-1 HP]
-                         (map vector (rest obs) (repeat obs-var) Xs Qs))
+                         (map vector (rest obs) (rest obs-var) Xs Qs))
           mar-means (map (fn [x] (nth x 2)) FF)
           mar-vars (map (fn [x] (nth x 3)) FF)]
       (reduce + (map (fn [x] (let [[y mu s2] x] (logpdf-normal y mu s2)))
@@ -330,7 +330,7 @@
     (fn [acc params]
      (let
       [[pm prec C D m M] acc
-       [y X Q] params
+       [y obs-var X Q] params
        [m+1 M+1 _ mar-obs-var XMXQH] (forward-filter [m M 0 0 0] [y obs-var X Q])
        XD (mmul X D)
        HXD (mget XD 0)
@@ -346,7 +346,7 @@
 
    ffs (reduce forward-filter
                [(/ (first obs) mar-obs-var-1) (/ 1 mar-obs-var-1) Cinit Dinit minit Minit]
-               (map vector (rest obs) Xs Qs))
+               (map vector (rest obs) (rest obs-var) Xs Qs))
    precision (second ffs)
    precxmean (first ffs)]
   [(/ precxmean precision) (/ 1.0 precision)]))
