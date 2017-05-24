@@ -25,25 +25,53 @@
  (let [p (count times)
        I (identity-matrix p)
        K (matern-cov-matrix times gp-variance gp-length-scale)
-       cov-matrix (add (mul observation-variance I) K)
+       cov-matrix (add (diagonal-matrix observation-variance) K)
        exponent (* 0.5 (dot observations (mmul ( inverse cov-matrix) observations)))
        normalizer (+ (* 0.5 (log (det cov-matrix)))
                      (* p 0.5 (log (* 2 Math/PI))))]
    (negate (+ normalizer exponent))))
+
 
 (defn trusted-mean-conditional
   "Returns parameters defining the full conditional for the mean with
   respect to a uniform prior, having already integrated out the GP f"
  [times observations observation-variance gp-variance gp-length-scale]
  (let [p (count times)
-       I (identity-matrix p)
        K (matern-cov-matrix times gp-variance gp-length-scale)
-       cov-matrix (add (mul observation-variance I) K)
+       cov-matrix (add (diagonal-matrix observation-variance) K)
        ones (fill (new-vector p) 1.0)
        prec (dot ones (mmul (inverse cov-matrix) ones))
        precxmean (dot ones (mmul (inverse cov-matrix) observations))]
    [(/ precxmean prec) (/ 1 prec)]))
 
+(comment
+(require '[incanter.stats :refer :all])
+(defn multi-observation-loglikelihood []
+  (let [times (sort (sample-uniform 10))
+        obs (sample-uniform 10)
+        obs-var (sample-uniform 10)
+        gp-var (rand)
+        gp-t-scale (rand)
+        loglikAR (ssm4clj.core/log-likelihood times obs obs-var gp-var gp-t-scale)
+        loglik (trusted-log-likelihood times obs obs-var gp-var gp-t-scale)
+        difference (- loglikAR loglik)
+        eps 0.000001]
+    [loglik loglikAR]))
+
+(multi-observation-loglikelihood)
+
+(defn mean-conditional []
+  (let [times (sort (sample-uniform 10))
+        obs (sample-uniform 10)
+        obs-var (sample-uniform 10)
+        gp-var (rand)
+        gp-t-scale (rand)
+        ARmean (ssm4clj.core/mean-conditional times obs obs-var gp-var gp-t-scale)
+        trustedmean (trusted-mean-conditional times obs obs-var gp-var gp-t-scale)]
+    [ARmean trustedmean]))
+
+(mean-conditional)
+)
 
 ;(defn stationary-covariance
 ; [gp-variance gp-length-scale]
