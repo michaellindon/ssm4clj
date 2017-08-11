@@ -1,6 +1,7 @@
 (ns ssm4clj.core
   (:require [ssm4clj.misc :refer :all]
             [clojure.core.matrix :refer :all]
+            [distributions.core :refer :all]
             [clojure.data.avl :as avl]))
 
 (defn corr
@@ -354,7 +355,7 @@
          residuals (fn [Fn Fv d] (/ (square (- (mget Fn 2) (dot [(* d l l l -1)
                                                                  (* d l l -3)
                                                                  (- 1 (* 3 d l))] Fv))) (* q d)))]
-     (d/inverse-gamma (dec (/ (+ 2 (count times)) 2))
+     (inverse-gamma (dec (/ (+ 2 (count times)) 2))
                       (* 0.5 (reduce +
                                      (dot (first Fs) (mmul (inverse (statcorr gp-time-scale)) (first Fs)))
                                      (map residuals (rest Fs) Fs delays)))))))
