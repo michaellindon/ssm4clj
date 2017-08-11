@@ -343,7 +343,7 @@
   "Evaluates the prior of the gp at F"
   ([F]
    (let [{gp-time-scale :time-scale} (meta F)]
-     (logpdf-prior-gp F gp-var gp-time-scale)))
+     (variance-full-conditional-approx F gp-time-scale)))
   ([F gp-time-scale]
    (let [data (deref (:data (meta F)))
          times (keys data)
