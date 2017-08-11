@@ -303,6 +303,62 @@
              (logpdf-mvnormal (first Fs) (matrix [0 0 0]) P)
              (map logpdf-AR (rest Fs) Fs Xs Qs)))))
 
+(defn logpdf-prior-gp-test-approx
+  "Evaluates the prior of the gp at F"
+  ([F]
+   (let [{gp-var :var
+          gp-time-scale :time-scale} (meta F)]
+     (logpdf-prior-gp F gp-var gp-time-scale)))
+  ([F gp-var gp-time-scale]
+   (let [data (deref (:data (meta F)))
+         times (keys data)
+         Fs (vals data)
+         [delays Qs Xs P] (AR-params times gp-var gp-time-scale)
+         logpdf-AR (fn [Fn Fv X Q] (logpdf-normal (mget Fn 2) (mget (mmul X Fv) 2) (mget Q 2 2)))]
+     (reduce +
+             (logpdf-mvnormal (first Fs) (matrix [0 0 0]) P)
+             (map logpdf-AR (rest Fs) Fs Xs Qs)))))
+
+(defn logpdf-prior-gp-approx
+  "Evaluates the prior of the gp at F"
+  ([F]
+   (let [{gp-var :var
+          gp-time-scale :time-scale} (meta F)]
+     (logpdf-prior-gp F gp-var gp-time-scale)))
+  ([F gp-var gp-time-scale]
+   (let [data (deref (:data (meta F)))
+         times (keys data)
+         Fs (vals data)
+         l (/ (sqrt 5) gp-time-scale)
+         q (/ (* 16 (pow l 5)) 3)
+         delays (map - (rest times) times)
+         logpdf-AR (fn [Fn Fv d] (logpdf-normal (mget Fn 2) (dot [(* d l l l -1)
+                                                                 (* d l l -3)
+                                                                 (- 1 (* 3 d l))] Fv) (* gp-var q d)))]
+     (reduce +
+             (logpdf-mvnormal (first Fs) (matrix [0 0 0]) (statcov gp-var gp-time-scale))
+             (map logpdf-AR (rest Fs) Fs delays)))))
+
+(defn variance-full-conditional-approx
+  "Evaluates the prior of the gp at F"
+  ([F]
+   (let [{gp-time-scale :time-scale} (meta F)]
+     (logpdf-prior-gp F gp-var gp-time-scale)))
+  ([F gp-time-scale]
+   (let [data (deref (:data (meta F)))
+         times (keys data)
+         Fs (vals data)
+         l (/ (sqrt 5) gp-time-scale)
+         q (/ (* 16 (pow l 5)) 3)
+         delays (map - (rest times) times)
+         residuals (fn [Fn Fv d] (/ (square (- (mget Fn 2) (dot [(* d l l l -1)
+                                                                 (* d l l -3)
+                                                                 (- 1 (* 3 d l))] Fv))) (* q d)))]
+     (d/inverse-gamma (dec (/ (+ 2 (count times)) 2))
+                      (* 0.5 (reduce +
+                                     (dot (first Fs) (mmul (inverse (statcorr gp-time-scale)) (first Fs)))
+                                     (map residuals (rest Fs) Fs delays)))))))
+
 (defn logpdf-gen-F
  [F times obs obs-var gp-var gp-time-scale]
  (let [[BC BCn] (FFBC times obs obs-var gp-var gp-time-scale)
